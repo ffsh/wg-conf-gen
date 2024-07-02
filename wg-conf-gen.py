@@ -2,12 +2,19 @@ import requests
 import pprint
 import random
 import click
+import sys
 
 relay_list = []
 
 def ask_mullvad(requested_country, requested_city):
     """Call api for available wireguard gateways"""
-    r = requests.get("https://api.mullvad.net/public/relays/wireguard/v1/")
+    try:
+        r = requests.get("https://api.mullvad.net/public/relays/wireguard/v1/")
+    except Exception as e:
+        print("Oh no we encountered and error while calling the mullvad api")
+        print(f"This was the error:\n\n {e}\n\n")
+        print("Try to run `curl https://api.mullvad.net/public/relays/wireguard/v1/`")
+        sys.exit(2)
     mullvad_gateways = r.json()
     for country in mullvad_gateways["countries"]:
         if country["name"] == requested_country:
@@ -31,6 +38,10 @@ def get_random_gateway(relay_list):
 def create(country, city, pk, address, file, device):
     """Creates wireguard config, you need to provide your private key and address string"""
     relay_list = ask_mullvad(country, city)
+    if relay_list is None:
+        print(f"Oops could not find any gateway for country: {country} and city: {city}")
+        print("Are you sure this combination is valid?")
+        sys.exit(1)
     gateway = get_random_gateway(relay_list)
     public_key = gateway["public_key"]
     ipv4_addr = gateway["ipv4_addr_in"]
