@@ -1,8 +1,9 @@
+#!/usr/bin/env python 
 import requests
-import pprint
 import random
 import click
 import sys
+import configparser
 
 relay_list = []
 
@@ -28,7 +29,11 @@ def get_random_gateway(relay_list):
     releay_number = random.randrange(0,max_len,1)
     return relay_list[releay_number]
 
-@click.command()
+@click.group()
+def cli():
+    pass
+
+@cli.command()
 @click.option('--pk', help='Your private key.', required=True)
 @click.option('--address', help='Your VPN address', required=True)
 @click.option('--country', default="Netherlands", help='Location: country, Default: Netherlands')
@@ -45,21 +50,51 @@ def create(country, city, pk, address, file, device):
     gateway = get_random_gateway(relay_list)
     public_key = gateway["public_key"]
     ipv4_addr = gateway["ipv4_addr_in"]
-    config = f"""[Interface]
-# Device: {device}
-PrivateKey = {pk}
-Address = {address}
-DNS = 10.64.0.1
-Table = 42
-PostUp = ip -4 route add 10.64.0.1 dev exit & ip -4 route add 193.138.218.74 dev exit
-
-[Peer]
-PublicKey = {public_key}
-AllowedIPs = 0.0.0.0/0,::0/0
-Endpoint = {ipv4_addr}:51820
-"""
+    
+    config = configparser.ConfigParser(comment_prefixes=None)
+    config.optionxform = str
+    config["Interface"] = {
+        '# Device': device,
+        'PrivateKey': pk,
+        'DNS': '10.64.0.1',
+        'Table': '42',
+        'PostUp': 'ip -4 route add 10.64.0.1 dev exit & ip -4 route add 193.138.218.74 dev exit',
+    }
+    config["Peer"] = {
+        '# Country': country,
+        '# City': city,
+        'PublicKey': public_key,
+        'AllowedIPs': '0.0.0.0/0,::0/0',
+        'Endpoint': f"{ipv4_addr}:51820"
+    }
+    
     with open(file, "w") as config_file:
-        config_file.write(config)
+        config.write(config_file)
+
+@cli.command()
+@click.option('--file', default="/etc/wireguard/exit.conf", help='The config file, Default: /etc/wireguard/exit.conf')
+def recreate(file):
+    """Regenerates config based on existing config, you only need to provide the config file"""
+    config = configparser.ConfigParser(comment_prefixes=None)
+    config.optionxform = str
+
+    config.read(file)
+
+    country = config.get("Peer", "# Country")
+    city = config.get("Peer", "# City")
+
+    relay_list = ask_mullvad(country, city)
+    gateway = get_random_gateway(relay_list)
+    public_key = gateway["public_key"]
+    ipv4_addr = gateway["ipv4_addr_in"]
+
+    config.set("Peer", "PublicKey", public_key)
+    config.set("Peer", "Endpoint", f"{ipv4_addr}:51820")
+
+    with open(file, "w") as config_file:
+        config.write(config_file)
+
+
 
 if __name__ == '__main__':
-    create()
+    cli()
