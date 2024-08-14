@@ -56,6 +56,7 @@ def create(country, city, pk, address, file, device):
     config["Interface"] = {
         '# Device': device,
         'PrivateKey': pk,
+        'Address': address,
         'DNS': '10.64.0.1',
         'Table': '42',
         'PostUp': 'ip -4 route add 10.64.0.1 dev exit & ip -4 route add 193.138.218.74 dev exit',
