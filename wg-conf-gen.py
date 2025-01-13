@@ -4,17 +4,34 @@ import random
 import click
 import sys
 import configparser
+import logging
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+retry_strategy = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["GET"]
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+session = requests.Session()
+session.mount("http://", adapter)
+session.mount("https://", adapter)
 
 relay_list = []
 
 def ask_mullvad(requested_country, requested_city):
-    """Call api for available wireguard gateways"""
+    """Call api for available wireguard gateways with automatic retries"""
     try:
-        r = requests.get("https://api.mullvad.net/public/relays/wireguard/v1/")
+        r = session.get("https://api.mullvad.net/public/relays/wireguard/v1/")
     except Exception as e:
-        print("Oh no we encountered and error while calling the mullvad api")
-        print(f"This was the error:\n\n {e}\n\n")
-        print("Try to run `curl https://api.mullvad.net/public/relays/wireguard/v1/`")
+        logger.error("Oh no we encountered an error while calling the mullvad api")
+        logger.error(f"This was the error:\n\n {e}\n\n")
+        logger.error("Try to run `curl https://api.mullvad.net/public/relays/wireguard/v1/`")
         sys.exit(2)
     mullvad_gateways = r.json()
     for country in mullvad_gateways["countries"]:
@@ -44,8 +61,8 @@ def create(country, city, pk, address, file, device):
     """Creates wireguard config, you need to provide your private key and address string"""
     relay_list = ask_mullvad(country, city)
     if relay_list is None:
-        print(f"Oops could not find any gateway for country: {country} and city: {city}")
-        print("Are you sure this combination is valid?")
+        logger.error(f"Oops could not find any gateway for country: {country} and city: {city}")
+        logger.error("Are you sure this combination is valid?")
         sys.exit(1)
     gateway = get_random_gateway(relay_list)
     public_key = gateway["public_key"]
