@@ -146,6 +146,10 @@ def recreate(file):
         f"Done! Regenerated {file} established connection to {gateway['hostname']}"
     )
 
+    logger.info(
+        f"Please restart the wireguard service to apply changes: `systemctl restart wg-quick@exit`"
+    )
+
 
 if __name__ == "__main__":
     cli()
