@@ -8,7 +8,11 @@ import logging
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+log_format = "%(asctime)s %(levelname)-8s %(message)s"
+date_format = "%Y-%m-%d %H:%M:%S"
+logging.basicConfig(
+    stream=sys.stdout, level=logging.INFO, format=log_format, datefmt=date_format
+)
 logger = logging.getLogger(__name__)
 
 retry_strategy = Retry(
