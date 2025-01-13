@@ -83,6 +83,7 @@ def create(country, city, pk, address, file, device):
     gateway = get_random_gateway(relay_list)
     public_key = gateway["public_key"]
     ipv4_addr = gateway["ipv4_addr_in"]
+    hostname = gateway["hostname"]
 
     config = configparser.ConfigParser(comment_prefixes=None)
     config.optionxform = str
@@ -97,6 +98,7 @@ def create(country, city, pk, address, file, device):
     config["Peer"] = {
         "# Country": country,
         "# City": city,
+        "# Hostname": hostname,
         "PublicKey": public_key,
         "AllowedIPs": "0.0.0.0/0,::0/0",
         "Endpoint": f"{ipv4_addr}:51820",
@@ -114,6 +116,7 @@ def create(country, city, pk, address, file, device):
 )
 def recreate(file):
     """Regenerates config based on existing config, you only need to provide the config file"""
+    logger.info(f"Regenerating {file}")
     config = configparser.ConfigParser(comment_prefixes=None)
     config.optionxform = str
 
@@ -124,14 +127,20 @@ def recreate(file):
 
     relay_list = ask_mullvad(country, city)
     gateway = get_random_gateway(relay_list)
+
     public_key = gateway["public_key"]
     ipv4_addr = gateway["ipv4_addr_in"]
 
+    config.set("Peer", "# Hostname", gateway["hostname"])
     config.set("Peer", "PublicKey", public_key)
     config.set("Peer", "Endpoint", f"{ipv4_addr}:51820")
 
     with open(file, "w") as config_file:
         config.write(config_file)
+
+    logger.info(
+        f"Done! Regenerated {file} established connection to {gateway['hostname']}"
+    )
 
 
 if __name__ == "__main__":
