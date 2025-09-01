@@ -128,6 +128,9 @@ def recreate(file):
 
     country = config.get("Peer", "# Country")
     city = config.get("Peer", "# City")
+    old_hostname = config.get("Peer", "# Hostname")
+    
+    logger.info(f"Old connection was: {old_hostname}")
 
     relay_list = ask_mullvad(country, city)
     gateway = get_random_gateway(relay_list)
