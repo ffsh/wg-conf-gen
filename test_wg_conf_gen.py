@@ -5,7 +5,6 @@ Tests for WireGuard configuration generator.
 import configparser
 import importlib.util
 import os
-import sys
 import tempfile
 from unittest.mock import Mock, patch
 
