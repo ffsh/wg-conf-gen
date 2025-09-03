@@ -1,9 +1,9 @@
-name: Pylint
+name: Code Quality & Tests
 
 on: [push]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -19,6 +19,9 @@ jobs:
         pip install --upgrade pip
         pip install pylint
         pip install -r requirements.txt
+    - name: Run tests
+      run: |
+        python -m pytest test_wg_conf_gen.py -v
     - name: Analysing the code with pylint
       run: |
         pylint $(git ls-files '*.py')
