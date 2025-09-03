@@ -16,5 +16,5 @@ source ./env/bin/activate
 ```
 
 ```
-pip install click
+pip install -r requirements.txt
 ```
