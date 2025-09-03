@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
-import requests
-import random
-import click
-import sys
+# pylint: disable=invalid-name
+"""
+WireGuard configuration generator for Mullvad VPN.
+
+This module provides functionality to create and recreate WireGuard configurations
+using Mullvad's API to select random gateways for improved privacy.
+"""
 import configparser
 import logging
-from requests.adapters import HTTPAdapter
+import random
+import sys
 from urllib3.util.retry import Retry
 
-log_format = "%(asctime)s %(levelname)-8s %(message)s"
-date_format = "%Y-%m-%d %H:%M:%S"
+import click
+import requests
+from requests.adapters import HTTPAdapter
+
+LOG_FORMAT = "%(asctime)s %(levelname)-8s %(message)s"
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 logging.basicConfig(
-    stream=sys.stdout, level=logging.INFO, format=log_format, datefmt=date_format
+    stream=sys.stdout, level=logging.INFO, format=LOG_FORMAT, datefmt=DATE_FORMAT
 )
 logger = logging.getLogger(__name__)
 
@@ -26,38 +34,37 @@ session = requests.Session()
 session.mount("http://", adapter)
 session.mount("https://", adapter)
 
-relay_list = []
-
 
 def ask_mullvad(requested_country, requested_city):
     """Call api for available wireguard gateways with automatic retries"""
     try:
-        r = session.get("https://api.mullvad.net/public/relays/wireguard/v1/")
-    except Exception as e:
+        response = session.get("https://api.mullvad.net/public/relays/wireguard/v1/")
+    except requests.RequestException as exception:
         logger.error("Oh no we encountered an error while calling the mullvad api")
-        logger.error(f"This was the error:\n\n {e}\n\n")
+        logger.error("This was the error:\n\n %s\n\n", exception)
         logger.error(
             "Try to run `curl https://api.mullvad.net/public/relays/wireguard/v1/`"
         )
         sys.exit(2)
-    mullvad_gateways = r.json()
+    mullvad_gateways = response.json()
     for country in mullvad_gateways["countries"]:
         if country["name"] == requested_country:
             for city in country["cities"]:
                 if city["name"] == requested_city:
                     return city["relays"]
+    return None
 
 
-def get_random_gateway(relay_list):
-    """Get randmon gateway from list"""
-    max_len = len(relay_list)
-    releay_number = random.randrange(0, max_len, 1)
-    return relay_list[releay_number]
+def get_random_gateway(available_relays):
+    """Get random gateway from list"""
+    max_len = len(available_relays)
+    relay_number = random.randrange(0, max_len, 1)
+    return available_relays[relay_number]
 
 
 @click.group()
 def cli():
-    pass
+    """WireGuard configuration generator CLI."""
 
 
 @cli.command()
@@ -73,18 +80,26 @@ def cli():
     help="The config file, Default: /etc/wireguard/exit.conf",
 )
 @click.option(
-    "--device", default="Unkown", help="You may provide a device name (from mullvad)"
+    "--device", default="Unknown", help="You may provide a device name (from mullvad)"
 )
-def create(country, city, pk, address, file, device):
+def create(**kwargs):
     """Creates wireguard config, you need to provide your private key and address string"""
-    relay_list = ask_mullvad(country, city)
-    if relay_list is None:
+    country = kwargs['country']
+    city = kwargs['city']
+    private_key = kwargs['pk']
+    address = kwargs['address']
+    config_file = kwargs['file']
+    device = kwargs['device']
+
+    available_relays = ask_mullvad(country, city)
+    if available_relays is None:
         logger.error(
-            f"Oops could not find any gateway for country: {country} and city: {city}"
+            "Oops could not find any gateway for country: %s and city: %s",
+            country, city
         )
         logger.error("Are you sure this combination is valid?")
         sys.exit(1)
-    gateway = get_random_gateway(relay_list)
+    gateway = get_random_gateway(available_relays)
     public_key = gateway["public_key"]
     ipv4_addr = gateway["ipv4_addr_in"]
     hostname = gateway["hostname"]
@@ -93,7 +108,7 @@ def create(country, city, pk, address, file, device):
     config.optionxform = str
     config["Interface"] = {
         "# Device": device,
-        "PrivateKey": pk,
+        "PrivateKey": private_key,
         "Address": address,
         "DNS": "10.64.0.1",
         "Table": "42",
@@ -108,8 +123,8 @@ def create(country, city, pk, address, file, device):
         "Endpoint": f"{ipv4_addr}:51820",
     }
 
-    with open(file, "w") as config_file:
-        config.write(config_file)
+    with open(config_file, "w", encoding="utf-8") as config_file_handle:
+        config.write(config_file_handle)
 
 
 @cli.command()
@@ -120,7 +135,7 @@ def create(country, city, pk, address, file, device):
 )
 def recreate(file):
     """Regenerates config based on existing config, you only need to provide the config file"""
-    logger.info(f"Regenerating {file}")
+    logger.info("Regenerating %s", file)
     config = configparser.ConfigParser(comment_prefixes=None)
     config.optionxform = str
 
@@ -129,11 +144,11 @@ def recreate(file):
     country = config.get("Peer", "# Country")
     city = config.get("Peer", "# City")
     old_hostname = config.get("Peer", "# Hostname")
-    
-    logger.info(f"Old connection was: {old_hostname}")
 
-    relay_list = ask_mullvad(country, city)
-    gateway = get_random_gateway(relay_list)
+    logger.info("Old connection was: %s", old_hostname)
+
+    available_relays = ask_mullvad(country, city)
+    gateway = get_random_gateway(available_relays)
 
     public_key = gateway["public_key"]
     ipv4_addr = gateway["ipv4_addr_in"]
@@ -142,15 +157,17 @@ def recreate(file):
     config.set("Peer", "PublicKey", public_key)
     config.set("Peer", "Endpoint", f"{ipv4_addr}:51820")
 
-    with open(file, "w") as config_file:
+    with open(file, "w", encoding="utf-8") as config_file:
         config.write(config_file)
 
     logger.info(
-        f"Done! Regenerated {file} established connection to {gateway['hostname']}"
+        "Done! Regenerated %s established connection to %s",
+        file, gateway['hostname']
     )
 
     logger.info(
-        f"Please restart the wireguard service to apply changes: `systemctl restart wg-quick@exit`"
+        "Please restart the wireguard service to apply changes: "
+        "`systemctl restart wg-quick@exit`"
     )
 
 
